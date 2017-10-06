@@ -28,7 +28,7 @@ for il in xrange(0, nl, 1):
 		outDs.GetRasterBand(1).WriteArray(mask.reshape(1,-1), 0, il)
 
 	except:
-		print 'Error!', il
+		print 'Error!', i
 
 
 outDs = None
