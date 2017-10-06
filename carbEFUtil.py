@@ -1,23 +1,22 @@
 # -*- coding: utf-8 -*-
+from __future__ import division
 import gdal
 import os
 import copy
-from __future__ import division
 import carbEFObj
+import carbEFCoord
 
-def rasterAlign(outPath, outFname, outType, refNL, refNS, refProjection, refGeotransform, rasterIN, resampleType='near'):
+def rasterAlign(outPath, outFname, outType, refNS, refNL, refProjection, refGeotransform, rasterIN, resampleType='near'):
 	"""lit un objet raster, cree un fichier warped, avec les memes proprietes, 
 		puis le transforme en objet raster.
 	"""
 
 	# check type:
-	if isinstance(rasterIN, raster):
-		self.rasterIN = rasterIN
-	else:
+	if not isinstance(rasterIN, carbEFObj.raster):
 		raise("carbEFObj.rasterWarp.__init__: rasterIN must be an instance of raster.")
 
-	ul = pixelToMap(0, 0, refGeotransform)
-	lr = pixelToMap(refNS, refNL, refGeotransform)
+	ul = carbEFCoord.pixelToMap(0, 0, refGeotransform)
+	lr = carbEFCoord.pixelToMap(refNS, refNL, refGeotransform)
 	outputBounds = ( min(ul[0], lr[0]), min(ul[1],lr[1]), max(ul[0],lr[0]), max(ul[1],lr[1]) )
 	inDatatype = rasterIN.parameters['dataType']
 	role = rasterIN.role
@@ -43,7 +42,7 @@ def rasterAlign(outPath, outFname, outType, refNL, refNS, refProjection, refGeot
 	except:
 		raise("cabEFUtil.rasterAlign: error when warping images")
 
-	alignedRaster = raster(outPath, outFname, role)
+	alignedRaster = carbEFObj.raster(outPath, outFname, role)
 
 	return alignedRaster
 
