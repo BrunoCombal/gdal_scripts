@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import unittest
 import carbEFObj
+import carbEFUtil
 
 class test_carbef(unittest.TestCase):
 	def setUp(self):
@@ -48,6 +49,22 @@ class test_carbef(unittest.TestCase):
 			if test is None: # if any value set to None, test fails
 				ok = False
 		self.assertTrue(ok)
+
+
+	def test_warp1(self):
+		burnArea='burnt_area_verhegghenetal2016_roadless_class4.tif' # in m, small
+		refImage='ecozone_stratification_2_emissions_factors_int16_0.tif' # in lat long, very large
+
+		rasterIN=carbEFObj.raster(self.path, burnArea,'exception')
+		outType=rasterIN.parameters['dataType']
+		refRaster=carbEFObj.raster(self.path, refImage, 'activity')
+		refNS=refRaster.parameters['ns']
+		refNL=refRaster.parameters['nl']
+		refProjection=refRaster.parameters['projection']
+		refGeotransform=refRaster.parameters['geotransform']
+
+		warped = carbEFUtil.rasterAlign(self.path, 'warpOut.tif', outType=outType, refNS=refNS, refNL=refNL, refProjection=refProjection, refGeotransform=refGeotransform, rasterIN=rasterIN, resampleType='near')
+		self.assertIsNotNone(warped)
 
 
 if __name__ == '__main__':
