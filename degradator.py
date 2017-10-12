@@ -55,22 +55,36 @@ def doDegradator(fidIn, fidOutCount, fidOutVal, law, *args, **kwargs):
 		outVal = [ law(y, *args, **kwargs) if y != 255 else -1 for y in countGrids ]
 		fidOutVal.GetRasterBand(1).WriteArray(numpy.array(outVal).reshape(1,-1), 0, il)
 
-
+#
+#
+#
 if __name__=="__main__":
-	inputFile='E:/impact/IMPACT/DATA/sangha/clip_offset_Sangha_recentchangesCongo_eq_area.tif'
-	outputFileCount='E:/tmp/test_count.tif'
-	outputFileVal='e:/tmp/test_value.tif'
 
-	fidIn, fidOutCount, fidOutVal = openIO(inputFile, outputFileCount, outputFileVal)
-	if fidIn is None:
-		print "could not open input file {}".format(inputFile)
-		sys.exit(1)
-	if fidOutCount is None:
-		print "could not open output file {}".format(outputFileCount)
-		sys.exit(1)
-	if fidOutVal is None:
-		print "could not open output file {}".format(outputFileVal)
-		sys.exit(1)
+	indir='//ies.jrc.it/H03/Forobs_Export/verhegghen_export/RECAREDD/dataset_RoC_exercice/1_activity_map'
+	outdir='E:/tmp/'
+	for fname in ['Likouala_recentchangesCongo_eq_area.tif', 'Sangha_recentchangesCongo_eq_area.tif']:
+		for thisCode in [3,4]:
+			print 'Processing {} with code {}'.format(fname, thisCode)
+			detectedCode = thisCode
+			inputFile=os.path.join(indir, fname)
+			outputFileCount=os.path.join(outdir,'count_code_{}_{}'.format(thisCode,fname))
+			outputFileVal=os.path.join(outdir,'percent_code_{}_{}'.format(thisCode,fname))
+			print outputFileCount
+
+			fidIn, fidOutCount, fidOutVal = openIO(inputFile, outputFileCount, outputFileVal)
+			if fidIn is None:
+				print "could not open input file {}".format(inputFile)
+				sys.exit(1)
+			if fidOutCount is None:
+				print "could not open output file {}".format(outputFileCount)
+				sys.exit(1)
+			if fidOutVal is None:
+				print "could not open output file {}".format(outputFileVal)
+				sys.exit(1)
 
 
-	doDegradator(fidIn, fidOutCount, fidOutVal, linearLaw, 50, 100)
+			doDegradator(fidIn, fidOutCount, fidOutVal, linearLaw, 50, 100)
+
+			fidIn=None
+			fidOutCount=None
+			fidOutVal=None
