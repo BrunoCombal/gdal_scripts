@@ -6,10 +6,18 @@ import copy
 import numpy
 
 ks=3 #kernel size
-detectedCode = 3
+#detectedCode = 3
+ND=0
+TT=1
+NTNT=2
+TNT1=3
+TNT2=4
+selectionCodes = [TNT1, TNT2]
+weights={ND:0, TT:0, NTNT:2, TNT1:1, TNT2:1}
+maxCount = (ks * ks - 1) *max(ND, TT, NTNT, TNT1, TNT2)
 
 def linearLaw(x, minVal, maxVal):
-	return minVal + x*(maxVal - minVal)/8.0
+	return minVal + x*(maxVal - minVal)/float(maxCount)
 
 def openIO(inputFile, outputFileCount, outputFileVal):
 	fidIn=None
@@ -42,13 +50,19 @@ def doDegradator(fidIn, fidOutCount, fidOutVal, law, *args, **kwargs):
 	nl = fidIn.RasterYSize
 
 	for il in xrange(1, nl-ks//2):
-		countGrids = numpy.zeros(ns)+255
+		countGrids = numpy.zeros(ns) + 255
 		thisStrip = fidIn.GetRasterBand(1).ReadAsArray(0, il-1, ns, ks)
 
 		for ii in xrange(ks//2, ns-ks//2):
-			if thisStrip[ks//2][ii] == detectedCode:
+			if thisStrip[ks//2][ii] in selectionCodes: #== detectedCode:
 				thisCell = thisStrip[0:ks, ii- ks//2:ii+ks//2 + 1]
-				countGrids[ii] = numpy.sum( thisCell == detectedCode)-1
+				if thisStrip[ks//2][ii] == TNT1:
+					countGrids[ii] = weights[TNT1] * (numpy.sum( thisCell == TNT1)-1) + \
+						weights[NTNT] * (numpy.sum(thisCell == NTNT))
+				if thisStrip[ks//2][ii] == TNT2:
+					countGrids[ii] = weights[TNT2] * (numpy.sum(thisCell == TNT2)-1) + \
+						weights[TNT1] * (numpy.sum(thisCell == TNT1)) + \
+						weights[NTNT] * (numpy.sum(thisCell == NTNT))
 				#print ii, il, thisCell.shape
 
 		fidOutCount.GetRasterBand(1).WriteArray(countGrids.reshape(1,-1), 0, il)
@@ -63,28 +77,26 @@ if __name__=="__main__":
 	indir='//ies.jrc.it/H03/Forobs_Export/verhegghen_export/RECAREDD/dataset_RoC_exercice/1_activity_map'
 	outdir='E:/tmp/'
 	for fname in ['Likouala_recentchangesCongo_eq_area.tif', 'Sangha_recentchangesCongo_eq_area.tif']:
-		for thisCode in [3,4]:
-			print 'Processing {} with code {}'.format(fname, thisCode)
-			detectedCode = thisCode
-			inputFile=os.path.join(indir, fname)
-			outputFileCount=os.path.join(outdir,'count_code_{}_{}'.format(thisCode,fname))
-			outputFileVal=os.path.join(outdir,'percent_code_{}_{}'.format(thisCode,fname))
-			print outputFileCount
+		print 'Processing {}'.format(fname)
+		inputFile = os.path.join(indir, fname)
+		outputFileCount = os.path.join(outdir,'count_weighted_{}'.format(fname))
+		outputFileVal = os.path.join(outdir,'percent_weighted_{}'.format(fname))
+		print outputFileCount
 
-			fidIn, fidOutCount, fidOutVal = openIO(inputFile, outputFileCount, outputFileVal)
-			if fidIn is None:
-				print "could not open input file {}".format(inputFile)
-				sys.exit(1)
-			if fidOutCount is None:
-				print "could not open output file {}".format(outputFileCount)
-				sys.exit(1)
-			if fidOutVal is None:
-				print "could not open output file {}".format(outputFileVal)
-				sys.exit(1)
+		fidIn, fidOutCount, fidOutVal = openIO(inputFile, outputFileCount, outputFileVal)
+		if fidIn is None:
+			print "could not open input file {}".format(inputFile)
+			sys.exit(1)
+		if fidOutCount is None:
+			print "could not open output file {}".format(outputFileCount)
+			sys.exit(1)
+		if fidOutVal is None:
+			print "could not open output file {}".format(outputFileVal)
+			sys.exit(1)
 
 
-			doDegradator(fidIn, fidOutCount, fidOutVal, linearLaw, 50, 100)
+		doDegradator(fidIn, fidOutCount, fidOutVal, linearLaw, 50, 100)
 
-			fidIn=None
-			fidOutCount=None
-			fidOutVal=None
+		fidIn=None
+		fidOutCount=None
+		fidOutVal=None
