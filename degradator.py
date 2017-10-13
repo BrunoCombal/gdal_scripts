@@ -5,20 +5,29 @@ import os
 import copy
 import numpy
 
-ks=3 #kernel size
+ks = 3 #kernel size
+nodataCount=255
+nodataVal=-1
 #detectedCode = 3
-ND=0
-TT=1
-NTNT=2
-TNT1=3
-TNT2=4
+ND = 0
+TT = 1
+NTNT = 2
+TNT1 = 3
+TNT2 = 4
 selectionCodes = [TNT1, TNT2]
 weights={ND:0, TT:0, NTNT:2, TNT1:1, TNT2:1}
 maxCount = (ks * ks - 1) *max(ND, TT, NTNT, TNT1, TNT2)
+gdal.TermProgress = gdal.TermProgress_nocb
 
+
+# linear law, get a pixel count x, and rescale it between min and max.
+# x: 0-maxCount
+# val: minVal - maxVal
+# maxCount is a general parameter
 def linearLaw(x, minVal, maxVal):
 	return minVal + x*(maxVal - minVal)/float(maxCount)
 
+# open files for reading and writing.
 def openIO(inputFile, outputFileCount, outputFileVal):
 	fidIn=None
 	fidOutCount=None
@@ -26,18 +35,29 @@ def openIO(inputFile, outputFileCount, outputFileVal):
 
 	try:
 		fidIn = gdal.Open(inputFile, gdal.GA_ReadOnly)
+		if fidIn is None:
+			raise("Could not open input file {}".format(inputFile))
 		ns = fidIn.RasterXSize
 		nl = fidIn.RasterYSize
 		proj = fidIn.GetProjection()
 		gtrans = fidIn.GetGeoTransform()
-		
+	except IOError:
+		raise("Error while opening input file {}".format(inputFile))
+
+	try:
 		fidOutCount = gdal.GetDriverByName("gtiff").Create(outputFileCount, ns, nl, 1, gdal.GDT_Byte, options=['compress=lzw','predictor=2','bigtiff=yes'])
+		if fidOutCount is None:
+			raise("Could not open output file {}".format(outputFileCount))
 		fidOutCount.SetProjection(proj)
 		fidOutCount.SetGeoTransform(gtrans)
+		fidOutCount.GetRasterBand(1).SetNoDataValue(nodataCount)
 
 		fidOutVal = gdal.GetDriverByName("gtiff").Create(outputFileVal, ns, nl, 1, gdal.GDT_Float32, options=['compress=lzw','predictor=3','bigtiff=yes'])
+		if fidOutVal is None:
+			raise("Could not open output file {}".format(outputFileVal))
 		fidOutVal.SetProjection(proj)
 		fidOutVal.SetGeoTransform(gtrans)
+		fidOutVal.GetRasterBand(1).SetNoDataValue(nodataVal)
 	except IOError, e:
 		raise("Error when opening files, {}".format(e))
 
@@ -48,10 +68,12 @@ def doDegradator(fidIn, fidOutCount, fidOutVal, law, *args, **kwargs):
 
 	ns = fidIn.RasterXSize
 	nl = fidIn.RasterYSize
+	gdal.TermProgress(0)
 
 	for il in xrange(1, nl-ks//2):
-		countGrids = numpy.zeros(ns) + 255
+		countGrids = numpy.zeros(ns) + nodataCount
 		thisStrip = fidIn.GetRasterBand(1).ReadAsArray(0, il-1, ns, ks)
+		gdal.TermProgress(il/nl)
 
 		for ii in xrange(ks//2, ns-ks//2):
 			if thisStrip[ks//2][ii] in selectionCodes: #== detectedCode:
@@ -66,11 +88,11 @@ def doDegradator(fidIn, fidOutCount, fidOutVal, law, *args, **kwargs):
 				#print ii, il, thisCell.shape
 
 		fidOutCount.GetRasterBand(1).WriteArray(countGrids.reshape(1,-1), 0, il)
-		outVal = [ law(y, *args, **kwargs) if y != 255 else -1 for y in countGrids ]
+		outVal = [ law(y, *args, **kwargs) if y != nodataCount else nodataVal for y in countGrids ]
 		fidOutVal.GetRasterBand(1).WriteArray(numpy.array(outVal).reshape(1,-1), 0, il)
-
+	gdal.TermProgress(1)
 #
-#
+# main calls the code for a series of files
 #
 if __name__=="__main__":
 
