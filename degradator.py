@@ -15,7 +15,7 @@ NTNT = 2
 TNT1 = 3
 TNT2 = 4
 selectionCodes = [TNT1, TNT2]
-weights={ND:0, TT:0, NTNT:2, TNT1:1, TNT2:1}
+weights = {ND:0, TT:0, NTNT:2, TNT1:1, TNT2:1}
 maxCount = (ks * ks - 1) *max(ND, TT, NTNT, TNT1, TNT2)
 gdal.TermProgress = gdal.TermProgress_nocb
 
@@ -26,6 +26,21 @@ gdal.TermProgress = gdal.TermProgress_nocb
 # maxCount is a general parameter
 def linearLaw(x, minVal, maxVal):
 	return minVal + x*(maxVal - minVal)/float(maxCount)
+# easing functions: 
+# visual examples: http://easings.net/fr
+# definitions: https://gist.github.com/gre/1650294
+# note: javascript y=(--t)*t*t translates into t=t-1, y=t*t*t
+def easeOutCubic(x, minVal, maxVal):
+	t = x/float(maxCount) - 1
+	y = t*t*t+1
+	return minVal + y*(maxVal-minVal)
+def easeInOutCubic(x, minVal, maxVal):
+	t = x/float(maxCount)
+	if t<0.5:
+		y = 4*t*t*t
+	else:
+		y=(t-1)*(2*t-2)*(2*t-2)+1
+	return minVal + y*(maxVal-minVal)
 
 # open files for reading and writing.
 def openIO(inputFile, outputFileCount, outputFileVal):
@@ -58,6 +73,7 @@ def openIO(inputFile, outputFileCount, outputFileVal):
 		fidOutVal.SetProjection(proj)
 		fidOutVal.SetGeoTransform(gtrans)
 		fidOutVal.GetRasterBand(1).SetNoDataValue(nodataVal)
+
 	except IOError, e:
 		raise("Error when opening files, {}".format(e))
 
@@ -101,23 +117,30 @@ if __name__=="__main__":
 	for fname in ['Likouala_recentchangesCongo_eq_area.tif', 'Sangha_recentchangesCongo_eq_area.tif']:
 		print 'Processing {}'.format(fname)
 		inputFile = os.path.join(indir, fname)
-		outputFileCount = os.path.join(outdir,'count_weighted_{}'.format(fname))
-		outputFileVal = os.path.join(outdir,'percent_weighted_{}'.format(fname))
+		outputFileCount = os.path.join(outdir,'count_weighted_easeInOutCubic_{}'.format(fname))
+		outputFileVal = os.path.join(outdir,'percent_weighted_easeInOutCubic_{}'.format(fname))
 		print outputFileCount
 
-		fidIn, fidOutCount, fidOutVal = openIO(inputFile, outputFileCount, outputFileVal)
-		if fidIn is None:
-			print "could not open input file {}".format(inputFile)
-			sys.exit(1)
-		if fidOutCount is None:
-			print "could not open output file {}".format(outputFileCount)
-			sys.exit(1)
-		if fidOutVal is None:
-			print "could not open output file {}".format(outputFileVal)
-			sys.exit(1)
+		try:
+			fidIn, fidOutCount, fidOutVal = openIO(inputFile, outputFileCount, outputFileVal)
+			if fidIn is None:
+				print "could not open input file {}".format(inputFile)
+				sys.exit(1)
+			if fidOutCount is None:
+				print "could not open output file {}".format(outputFileCount)
+				sys.exit(1)
+			if fidOutVal is None:
+				print "could not open output file {}".format(outputFileVal)
+				sys.exit(1)
 
 
-		doDegradator(fidIn, fidOutCount, fidOutVal, linearLaw, 50, 100)
+			#doDegradator(fidIn, fidOutCount, fidOutVal, linearLaw, 50.0, 100.0)
+			#doDegradator(fidIn, fidOutCount, fidOutVal, easeOutCubic, 50.0, 100.0)
+			doDegradator(fidIn, fidOutCount, fidOutVal, easeInOutCubic, 50.0, 100.0)
+		except IOError, e:
+			raise("IOError {}".format(e))
+		except Exception, e:
+			raise("Error {}".format(e))
 
 		fidIn=None
 		fidOutCount=None
