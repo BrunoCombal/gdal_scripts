@@ -5,26 +5,33 @@ import os
 import copy
 import numpy
 
-
 class degradator():
+	# class variables
 	ks = 3 #kernel size
-	nodataCount=255
-	nodataVal=-1
-	#detectedCode = 3
 	ND = 0
 	TT = 1
 	NTNT = 2
 	TNT1 = 3
 	TNT2 = 4
 	selectionCodes = [TNT1, TNT2]
-	weights = {ND:0, TT:0, NTNT:2, TNT1:1, TNT2:1}
 	maxCount = (ks * ks - 1) *max(ND, TT, NTNT, TNT1, TNT2)
+	weights = {ND:0, TT:0, NTNT:2, TNT1:1, TNT2:1}
+	nodataCount=255
+	nodataVal=-1
 	gdal.TermProgress = gdal.TermProgress_nocb
-	# pointers to open files
-	fidIn=None
-	fidOutCount=None
-	fidOutVal=None
 
+
+	def __init__(self, inputFile, outputFileCount, outputFileVal):
+		self.fidIn=None
+		self.fidOutCount=None
+		self.fidOutVal=None
+		self.__openIO(inputFile, outputFileCount, outputFileVal)
+
+	def __del__(self):
+		self.fidIn=None
+		self.fidOutCount=None
+		self.fidOutVal=None
+		print 'ready for deleting object'
 
 	# linear law, get a pixel count x, and rescale it between min and max.
 	# x: 0-maxCount
@@ -50,7 +57,7 @@ class degradator():
 		return minVal + y*(maxVal-minVal)
 
 	# open files for reading and writing.
-	def openIO(self, inputFile, outputFileCount, outputFileVal):
+	def __openIO(self, inputFile, outputFileCount, outputFileVal):
 
 		try:
 			self.fidIn = gdal.Open(inputFile, gdal.GA_ReadOnly)
@@ -87,7 +94,6 @@ class degradator():
 			if self.fidOutVal is None:
 				print "could not open output file {}".format(outputFileVal)
 				return False
-
 
 		except IOError, e:
 			raise
