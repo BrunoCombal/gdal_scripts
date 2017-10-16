@@ -5,143 +5,120 @@ import os
 import copy
 import numpy
 
-ks = 3 #kernel size
-nodataCount=255
-nodataVal=-1
-#detectedCode = 3
-ND = 0
-TT = 1
-NTNT = 2
-TNT1 = 3
-TNT2 = 4
-selectionCodes = [TNT1, TNT2]
-weights = {ND:0, TT:0, NTNT:2, TNT1:1, TNT2:1}
-maxCount = (ks * ks - 1) *max(ND, TT, NTNT, TNT1, TNT2)
-gdal.TermProgress = gdal.TermProgress_nocb
 
-
-# linear law, get a pixel count x, and rescale it between min and max.
-# x: 0-maxCount
-# val: minVal - maxVal
-# maxCount is a general parameter
-def linearLaw(x, minVal, maxVal):
-	return minVal + x*(maxVal - minVal)/float(maxCount)
-# easing functions: 
-# visual examples: http://easings.net/fr
-# definitions: https://gist.github.com/gre/1650294
-# note: javascript y=(--t)*t*t translates into t=t-1, y=t*t*t
-def easeOutCubic(x, minVal, maxVal):
-	t = x/float(maxCount) - 1
-	y = t*t*t+1
-	return minVal + y*(maxVal-minVal)
-def easeInOutCubic(x, minVal, maxVal):
-	t = x/float(maxCount)
-	if t<0.5:
-		y = 4*t*t*t
-	else:
-		y=(t-1)*(2*t-2)*(2*t-2)+1
-	return minVal + y*(maxVal-minVal)
-
-# open files for reading and writing.
-def openIO(inputFile, outputFileCount, outputFileVal):
+class degradator():
+	ks = 3 #kernel size
+	nodataCount=255
+	nodataVal=-1
+	#detectedCode = 3
+	ND = 0
+	TT = 1
+	NTNT = 2
+	TNT1 = 3
+	TNT2 = 4
+	selectionCodes = [TNT1, TNT2]
+	weights = {ND:0, TT:0, NTNT:2, TNT1:1, TNT2:1}
+	maxCount = (ks * ks - 1) *max(ND, TT, NTNT, TNT1, TNT2)
+	gdal.TermProgress = gdal.TermProgress_nocb
+	# pointers to open files
 	fidIn=None
 	fidOutCount=None
 	fidOutVal=None
 
-	try:
-		fidIn = gdal.Open(inputFile, gdal.GA_ReadOnly)
-		if fidIn is None:
-			raise("Could not open input file {}".format(inputFile))
-		ns = fidIn.RasterXSize
-		nl = fidIn.RasterYSize
-		proj = fidIn.GetProjection()
-		gtrans = fidIn.GetGeoTransform()
-	except IOError:
-		raise("Error while opening input file {}".format(inputFile))
 
-	try:
-		fidOutCount = gdal.GetDriverByName("gtiff").Create(outputFileCount, ns, nl, 1, gdal.GDT_Byte, options=['compress=lzw','predictor=2','bigtiff=yes'])
-		if fidOutCount is None:
-			raise("Could not open output file {}".format(outputFileCount))
-		fidOutCount.SetProjection(proj)
-		fidOutCount.SetGeoTransform(gtrans)
-		fidOutCount.GetRasterBand(1).SetNoDataValue(nodataCount)
+	# linear law, get a pixel count x, and rescale it between min and max.
+	# x: 0-maxCount
+	# val: minVal - maxVal
+	# maxCount is a general parameter
+	def linearLaw(self, x, minVal, maxVal):
+		return minVal + x*(maxVal - minVal)/float(self.maxCount)
+	# easing functions: 
+	# visual examples: http://easings.net/fr
+	# definitions: https://gist.github.com/gre/1650294
+	# note: javascript y=(--t)*t*t translates into t=t-1, y=t*t*t
+	def easeOutCubic(x, minVal, maxVal):
+		t = x/float(self.maxCount) - 1
+		y = t*t*t+1
+		return minVal + y*(maxVal-minVal)
 
-		fidOutVal = gdal.GetDriverByName("gtiff").Create(outputFileVal, ns, nl, 1, gdal.GDT_Float32, options=['compress=lzw','predictor=3','bigtiff=yes'])
-		if fidOutVal is None:
-			raise("Could not open output file {}".format(outputFileVal))
-		fidOutVal.SetProjection(proj)
-		fidOutVal.SetGeoTransform(gtrans)
-		fidOutVal.GetRasterBand(1).SetNoDataValue(nodataVal)
+	def easeInOutCubic(self, x, minVal, maxVal):
+		t = x/float(self.maxCount)
+		if t<0.5:
+			y = 4*t*t*t
+		else:
+			y=(t-1)*(2*t-2)*(2*t-2)+1
+		return minVal + y*(maxVal-minVal)
 
-	except IOError, e:
-		raise("Error when opening files, {}".format(e))
-
-
-	return fidIn, fidOutCount, fidOutVal
-
-def doDegradator(fidIn, fidOutCount, fidOutVal, law, *args, **kwargs):
-
-	ns = fidIn.RasterXSize
-	nl = fidIn.RasterYSize
-	gdal.TermProgress(0)
-
-	for il in xrange(1, nl-ks//2):
-		countGrids = numpy.zeros(ns) + nodataCount
-		thisStrip = fidIn.GetRasterBand(1).ReadAsArray(0, il-1, ns, ks)
-		gdal.TermProgress(il/nl)
-
-		for ii in xrange(ks//2, ns-ks//2):
-			if thisStrip[ks//2][ii] in selectionCodes: #== detectedCode:
-				thisCell = thisStrip[0:ks, ii- ks//2:ii+ks//2 + 1]
-				if thisStrip[ks//2][ii] == TNT1:
-					countGrids[ii] = weights[TNT1] * (numpy.sum( thisCell == TNT1)-1) + \
-						weights[NTNT] * (numpy.sum(thisCell == NTNT))
-				if thisStrip[ks//2][ii] == TNT2:
-					countGrids[ii] = weights[TNT2] * (numpy.sum(thisCell == TNT2)-1) + \
-						weights[TNT1] * (numpy.sum(thisCell == TNT1)) + \
-						weights[NTNT] * (numpy.sum(thisCell == NTNT))
-				#print ii, il, thisCell.shape
-
-		fidOutCount.GetRasterBand(1).WriteArray(countGrids.reshape(1,-1), 0, il)
-		outVal = [ law(y, *args, **kwargs) if y != nodataCount else nodataVal for y in countGrids ]
-		fidOutVal.GetRasterBand(1).WriteArray(numpy.array(outVal).reshape(1,-1), 0, il)
-	gdal.TermProgress(1)
-#
-# main calls the code for a series of files
-#
-if __name__=="__main__":
-
-	indir='//ies.jrc.it/H03/Forobs_Export/verhegghen_export/RECAREDD/dataset_RoC_exercice/1_activity_map'
-	outdir='E:/tmp/'
-	for fname in ['Likouala_recentchangesCongo_eq_area.tif', 'Sangha_recentchangesCongo_eq_area.tif']:
-		print 'Processing {}'.format(fname)
-		inputFile = os.path.join(indir, fname)
-		outputFileCount = os.path.join(outdir,'count_weighted_easeInOutCubic_{}'.format(fname))
-		outputFileVal = os.path.join(outdir,'percent_weighted_easeInOutCubic_{}'.format(fname))
-		print outputFileCount
+	# open files for reading and writing.
+	def openIO(self, inputFile, outputFileCount, outputFileVal):
 
 		try:
-			fidIn, fidOutCount, fidOutVal = openIO(inputFile, outputFileCount, outputFileVal)
-			if fidIn is None:
+			self.fidIn = gdal.Open(inputFile, gdal.GA_ReadOnly)
+			if self.fidIn is None:
+				raise IOError("Could not open input file {}".format(inputFile))
+			ns = self.fidIn.RasterXSize
+			nl = self.fidIn.RasterYSize
+			proj = self.fidIn.GetProjection()
+			gtrans = self.fidIn.GetGeoTransform()
+			if self.fidIn is None:
 				print "could not open input file {}".format(inputFile)
-				sys.exit(1)
-			if fidOutCount is None:
+				return False
+		except IOError:
+			raise IOError("Error while opening input file {}".format(inputFile))
+
+		try:
+			self.fidOutCount = gdal.GetDriverByName("gtiff").Create(outputFileCount, ns, nl, 1, gdal.GDT_Byte, options=['compress=lzw','predictor=2','bigtiff=yes'])
+			if self.fidOutCount is None:
+				raise IOError("Could not open output file {}".format(outputFileCount))
+			self.fidOutCount.SetProjection(proj)
+			self.fidOutCount.SetGeoTransform(gtrans)
+			self.fidOutCount.GetRasterBand(1).SetNoDataValue(self.nodataCount)
+
+			self.fidOutVal = gdal.GetDriverByName("gtiff").Create(outputFileVal, ns, nl, 1, gdal.GDT_Float32, options=['compress=lzw','predictor=3','bigtiff=yes'])
+			if self.fidOutVal is None:
+				raise IOError("Could not open output file {}".format(outputFileVal))
+			self.fidOutVal.SetProjection(proj)
+			self.fidOutVal.SetGeoTransform(gtrans)
+			self.fidOutVal.GetRasterBand(1).SetNoDataValue(self.nodataVal)
+
+			if self.fidOutCount is None:
 				print "could not open output file {}".format(outputFileCount)
-				sys.exit(1)
-			if fidOutVal is None:
+				return False
+			if self.fidOutVal is None:
 				print "could not open output file {}".format(outputFileVal)
-				sys.exit(1)
+				return False
 
 
-			#doDegradator(fidIn, fidOutCount, fidOutVal, linearLaw, 50.0, 100.0)
-			#doDegradator(fidIn, fidOutCount, fidOutVal, easeOutCubic, 50.0, 100.0)
-			doDegradator(fidIn, fidOutCount, fidOutVal, easeInOutCubic, 50.0, 100.0)
 		except IOError, e:
-			raise("IOError {}".format(e))
-		except Exception, e:
-			raise("Error {}".format(e))
+			raise
 
-		fidIn=None
-		fidOutCount=None
-		fidOutVal=None
+		return True
+
+	def doDegradator(self, law, *args, **kwargs):
+
+		ns = self.fidIn.RasterXSize
+		nl = self.fidIn.RasterYSize
+		gdal.TermProgress(0)
+
+		for il in xrange(1, nl-self.ks//2):
+			countGrids = numpy.zeros(ns) + self.nodataCount
+			thisStrip = self.fidIn.GetRasterBand(1).ReadAsArray(0, il-1, ns, self.ks)
+			gdal.TermProgress(il/nl)
+
+			for ii in xrange(self.ks//2, ns-self.ks//2):
+				if thisStrip[self.ks//2][ii] in self.selectionCodes: #== detectedCode:
+					thisCell = thisStrip[0:self.ks, ii- self.ks//2:ii+self.ks//2 + 1]
+					if thisStrip[self.ks//2][ii] == self.TNT1:
+						countGrids[ii] = self.weights[self.TNT1] * (numpy.sum( thisCell == self.TNT1)-1) + \
+							self.weights[self.NTNT] * (numpy.sum(thisCell == self.NTNT))
+					if thisStrip[self.ks//2][ii] == self.TNT2:
+						countGrids[ii] = self.weights[self.TNT2] * (numpy.sum(thisCell == self.TNT2)-1) + \
+							self.weights[self.TNT1] * (numpy.sum(thisCell == self.TNT1)) + \
+							self.weights[self.NTNT] * (numpy.sum(thisCell == self.NTNT))
+
+			self.fidOutCount.GetRasterBand(1).WriteArray(countGrids.reshape(1,-1), 0, il)
+			outVal = [ law(y, *args, **kwargs) if y != self.nodataCount else self.nodataVal for y in countGrids ]
+			self.fidOutVal.GetRasterBand(1).WriteArray( numpy.array(outVal).reshape(1,-1), 0, il )
+		gdal.TermProgress(1)
+
+#
