@@ -14,10 +14,10 @@ class degradator():
 	TNT1 = 3
 	TNT2 = 4
 	selectionCodes = [TNT1, TNT2]
-	maxCount = (ks * ks - 1) *max(ND, TT, NTNT, TNT1, TNT2)
+	maxCount = (ks * ks - 1) * max(ND, TT, NTNT, TNT1, TNT2)
 	weights = {ND:0, TT:0, NTNT:2, TNT1:1, TNT2:1}
-	nodataCount=255
-	nodataVal=-1
+	nodataCount = 255
+	nodataVal = -1
 	gdal.TermProgress = gdal.TermProgress_nocb
 
 
@@ -74,14 +74,14 @@ class degradator():
 			raise IOError("Error while opening input file {}".format(inputFile))
 
 		try:
-			self.fidOutCount = gdal.GetDriverByName("gtiff").Create(outputFileCount, ns, nl, 1, gdal.GDT_Byte, options=['compress=lzw','predictor=2','bigtiff=yes'])
+			self.fidOutCount = gdal.GetDriverByName("gtiff").Create(outputFileCount, ns, nl, 2, gdal.GDT_Byte, options=['compress=lzw','predictor=2','bigtiff=yes'])
 			if self.fidOutCount is None:
 				raise IOError("Could not open output file {}".format(outputFileCount))
 			self.fidOutCount.SetProjection(proj)
 			self.fidOutCount.SetGeoTransform(gtrans)
 			self.fidOutCount.GetRasterBand(1).SetNoDataValue(self.nodataCount)
 
-			self.fidOutVal = gdal.GetDriverByName("gtiff").Create(outputFileVal, ns, nl, 1, gdal.GDT_Float32, options=['compress=lzw','predictor=3','bigtiff=yes'])
+			self.fidOutVal = gdal.GetDriverByName("gtiff").Create(outputFileVal, ns, nl, 2, gdal.GDT_Float32, options=['compress=lzw','predictor=3','bigtiff=yes'])
 			if self.fidOutVal is None:
 				raise IOError("Could not open output file {}".format(outputFileVal))
 			self.fidOutVal.SetProjection(proj)
@@ -107,7 +107,11 @@ class degradator():
 		gdal.TermProgress(0)
 
 		for il in xrange(1, nl-self.ks//2):
-			countGrids = numpy.zeros(ns) + self.nodataCount
+			# countGrids: total weights for each period
+			countGrids = numpy.zeros((ns,2)) + self.nodataCount # 1 column per period
+			# countTT: total weights for TT, per period
+			countTT = numpy.zeros((ns,2)) + self.nodataCount
+
 			thisStrip = self.fidIn.GetRasterBand(1).ReadAsArray(0, il-1, ns, self.ks)
 			gdal.TermProgress(il/nl)
 
@@ -115,16 +119,20 @@ class degradator():
 				if thisStrip[self.ks//2][ii] in self.selectionCodes: #== detectedCode:
 					thisCell = thisStrip[0:self.ks, ii- self.ks//2:ii+self.ks//2 + 1]
 					if thisStrip[self.ks//2][ii] == self.TNT1:
-						countGrids[ii] = self.weights[self.TNT1] * (numpy.sum( thisCell == self.TNT1)-1) + \
+						countGrids[ii],0 = self.weights[self.TNT1] * (numpy.sum( thisCell == self.TNT1)-1) + \
 							self.weights[self.NTNT] * (numpy.sum(thisCell == self.NTNT))
 					if thisStrip[self.ks//2][ii] == self.TNT2:
-						countGrids[ii] = self.weights[self.TNT2] * (numpy.sum(thisCell == self.TNT2)-1) + \
+						countGrids[ii,1] = self.weights[self.TNT2] * (numpy.sum(thisCell == self.TNT2)-1) + \
 							self.weights[self.TNT1] * (numpy.sum(thisCell == self.TNT1)) + \
 							self.weights[self.NTNT] * (numpy.sum(thisCell == self.NTNT))
 
-			self.fidOutCount.GetRasterBand(1).WriteArray(countGrids.reshape(1,-1), 0, il)
-			outVal = [ law(y, *args, **kwargs) if y != self.nodataCount else self.nodataVal for y in countGrids ]
-			self.fidOutVal.GetRasterBand(1).WriteArray( numpy.array(outVal).reshape(1,-1), 0, il )
+			self.fidOutCount.GetRasterBand(1).WriteArray(countGrids[:,0].reshape(1,-1), 0, il)
+			self.fidOutCount.GetRasterBand(2).WriteArray(countGrids[:,1].reshape(1,-1), 0, il)
+
+			for ib in [0,1]:
+				outVal = [ law(y, *args, **kwargs) if y != self.nodataCount else self.nodataVal for y in countGrids[:,ib] ]
+				self.fidOutVal.GetRasterBand(ib+1).WriteArray( numpy.array(outVal).reshape(1,-1), 0, il )
+
 		gdal.TermProgress(1)
 
 #
